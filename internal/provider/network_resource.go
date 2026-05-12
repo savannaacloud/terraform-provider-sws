@@ -186,19 +186,19 @@ func (r *NetworkResource) Delete(ctx context.Context, req resource.DeleteRequest
 		return
 	}
 
-	// Cascade-delete order matters. Neutron refuses to delete a network with
-	// any ports attached, refuses to delete a subnet with a router interface
-	// on it, and refuses to delete a router-interface port directly. Order:
-	//   1. detach every router interface that touches this network's subnet
-	//   2. delete the subnet (which cleans up DHCP ports owned by the subnet)
-	//   3. delete the network
+	// Cascade-delete network resources. Neutron refuses to delete a network
+	// with any port attached, refuses to delete a subnet with a router
+	// interface on it, refuses to delete a router-interface port directly,
+	// and cleans up DHCP ports asynchronously after subnet delete (~2-8s).
 	//
-	// Anyone running `auto_public_ip=true` on an sws_instance will have had
-	// the python-backend attach the network to the project's HA router
-	// without telling the provider, so a clean destroy MUST do this lookup.
+	// Each retry iteration does the full cleanup so we self-heal against:
+	//   - HA router interfaces created out-of-band by sws_instance's
+	//     auto_public_ip flow (a single per-instance router that the
+	//     provider doesn't track in state)
+	//   - DHCP ports still being torn down by neutron-dhcp-agent
+	//   - Any port that appeared after the previous iteration
 
-	// 1. find router-interface ports on this network and detach them
-	var ports []struct {
+	type portRec struct {
 		ID          string `json:"id"`
 		DeviceOwner string `json:"device_owner"`
 		DeviceID    string `json:"device_id"`
@@ -207,35 +207,38 @@ func (r *NetworkResource) Delete(ctx context.Context, req resource.DeleteRequest
 		} `json:"fixed_ips"`
 		NetworkID string `json:"network_id"`
 	}
-	if err := r.client.Do("GET", "/api/network/ports", nil, &ports); err == nil {
-		for _, p := range ports {
-			if p.NetworkID != state.ID.ValueString() {
-				continue
-			}
-			// router_interface OR ha_router_replicated_interface OR centralized variants
-			if len(p.DeviceOwner) > 14 && p.DeviceOwner[:15] == "network:ha_rout" ||
-				len(p.DeviceOwner) > 8 && p.DeviceOwner[:9] == "network:r" {
-				if len(p.FixedIPs) > 0 && p.DeviceID != "" {
+
+	cleanupOnce := func() {
+		var ports []portRec
+		if err := r.client.Do("GET", "/api/network/ports", nil, &ports); err == nil {
+			for _, p := range ports {
+				if p.NetworkID != state.ID.ValueString() {
+					continue
+				}
+				// Detach any router interface (HA replicated or DVR/centralized).
+				isRouterIface := false
+				if len(p.DeviceOwner) >= 15 && p.DeviceOwner[:15] == "network:ha_rout" {
+					isRouterIface = true
+				} else if len(p.DeviceOwner) >= 9 && p.DeviceOwner[:9] == "network:r" {
+					isRouterIface = true
+				}
+				if isRouterIface && len(p.FixedIPs) > 0 && p.DeviceID != "" {
 					body := map[string]any{"subnet_id": p.FixedIPs[0].SubnetID}
 					_ = r.client.Do("PUT", "/api/network/routers/"+p.DeviceID+"/remove_router_interface", body, nil)
 				}
 			}
 		}
+		// Try the subnet delete every iteration too — it's a no-op if the
+		// subnet is already gone, and gives DHCP cleanup another nudge.
+		if !state.SubnetID.IsNull() && state.SubnetID.ValueString() != "" {
+			_ = r.client.Do("DELETE", "/api/network/subnets/"+state.SubnetID.ValueString(), nil, nil)
+		}
 	}
 
-	// 2. delete the inline subnet (kills its DHCP ports — asynchronously,
-	// neutron-dhcp-agent takes a few seconds to clean them up)
-	if !state.SubnetID.IsNull() && state.SubnetID.ValueString() != "" {
-		_ = r.client.Do("DELETE", "/api/network/subnets/"+state.SubnetID.ValueString(), nil, nil)
-	}
-
-	// 3. delete the network — retry for up to 30s because DHCP port cleanup
-	// is async. Neutron returns 409 "There are one or more ports still in
-	// use on the network" until the dhcp-agent finishes; observed window is
-	// 2-8s. Worth retrying instead of erroring out.
 	var lastErr error
-	deadline := time.Now().Add(30 * time.Second)
+	deadline := time.Now().Add(45 * time.Second)
 	for time.Now().Before(deadline) {
+		cleanupOnce()
 		lastErr = r.client.Do("DELETE", "/api/network/networks/"+state.ID.ValueString(), nil, nil)
 		if lastErr == nil {
 			return
@@ -248,7 +251,7 @@ func (r *NetworkResource) Delete(ctx context.Context, req resource.DeleteRequest
 				break
 			}
 		}
-		time.Sleep(2 * time.Second)
+		time.Sleep(3 * time.Second)
 	}
 	resp.Diagnostics.AddError("delete network", lastErr.Error())
 }
