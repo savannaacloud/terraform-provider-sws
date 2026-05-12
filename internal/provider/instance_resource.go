@@ -198,33 +198,107 @@ func (r *InstanceResource) Create(ctx context.Context, req resource.CreateReques
 
 	// Poll for ACTIVE (or ERROR) — Nova create returns immediately with BUILD.
 	deadline := time.Now().Add(5 * time.Minute)
+	var status string
 	for time.Now().Before(deadline) {
-		var got struct {
-			ID        string `json:"id"`
-			Status    string `json:"status"`
-			IPAddress string `json:"ip_address"`
-			PublicIP  string `json:"public_ip"`
-		}
+		var got serverGetResponse
 		if err := r.client.Do("GET", "/api/compute/servers/"+created.ID, nil, &got); err == nil {
 			if got.Status == "ACTIVE" || got.Status == "ERROR" {
-				plan.ID = types.StringValue(got.ID)
-				plan.Status = types.StringValue(got.Status)
-				ip := got.PublicIP
-				if ip == "" {
-					ip = got.IPAddress
-				}
-				plan.IPAddress = types.StringValue(ip)
-				if got.Status == "ERROR" {
-					resp.Diagnostics.AddError("instance create failed", "server entered ERROR state")
-					return
-				}
-				resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
-				return
+				status = got.Status
+				break
 			}
 		}
 		time.Sleep(5 * time.Second)
 	}
-	resp.Diagnostics.AddError("instance create timed out", "server did not become ACTIVE within 5 min")
+	if status == "" {
+		resp.Diagnostics.AddError("instance create timed out", "server did not become ACTIVE within 5 min")
+		return
+	}
+	if status == "ERROR" {
+		plan.ID = types.StringValue(created.ID)
+		plan.Status = types.StringValue("ERROR")
+		plan.IPAddress = types.StringValue("")
+		resp.Diagnostics.AddError("instance create failed", "server entered ERROR state")
+		return
+	}
+
+	// Auto-allocate a public IP if the user asked for one. The backend does
+	// this as a separate post-ACTIVE call (matches the launch wizard flow).
+	// Failure here isn't fatal — log a warning so the user can attach one
+	// manually, but keep the instance.
+	if !plan.PublicIP.IsNull() && plan.PublicIP.ValueBool() {
+		if err := r.client.Do("POST", "/api/compute/servers/"+created.ID+"/auto-public-ip", nil, nil); err != nil {
+			resp.Diagnostics.AddWarning("auto public IP failed", err.Error()+" — instance is up; you can attach a public IP manually.")
+		}
+	}
+
+	// Re-fetch to get the addresses dict populated (including the floating
+	// IP if auto-public-ip just allocated one). Poll briefly because the
+	// allocation can take a couple of seconds to land in the server view.
+	var final serverGetResponse
+	for i := 0; i < 6; i++ {
+		if err := r.client.Do("GET", "/api/compute/servers/"+created.ID, nil, &final); err == nil {
+			pubIP, fixedIP := extractIPs(final.Addresses)
+			if pubIP != "" || !plan.PublicIP.ValueBool() {
+				// done: got the floating IP, OR caller didn't ask for one
+				plan.ID = types.StringValue(final.ID)
+				plan.Status = types.StringValue(final.Status)
+				ip := pubIP
+				if ip == "" {
+					ip = fixedIP
+				}
+				plan.IPAddress = types.StringValue(ip)
+				resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
+				return
+			}
+		}
+		time.Sleep(3 * time.Second)
+	}
+	// Fall back to whatever we have — better than no state.
+	pubIP, fixedIP := extractIPs(final.Addresses)
+	ip := pubIP
+	if ip == "" {
+		ip = fixedIP
+	}
+	plan.ID = types.StringValue(created.ID)
+	plan.Status = types.StringValue(final.Status)
+	plan.IPAddress = types.StringValue(ip)
+	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
+}
+
+// serverGetResponse mirrors the python-backend _fmt_server() shape.
+// addresses is a {network_name: [{addr, OS-EXT-IPS:type, ...}, ...]} dict.
+type serverGetResponse struct {
+	ID        string                     `json:"id"`
+	Name      string                     `json:"name"`
+	Status    string                     `json:"status"`
+	Addresses map[string][]map[string]any `json:"addresses"`
+}
+
+// extractIPs returns (floatingIP, fixedIP) from the backend addresses dict.
+// Prefers the first floating IPv4 across all networks; falls back to first
+// fixed IPv4 if no floating is present.
+func extractIPs(addrs map[string][]map[string]any) (string, string) {
+	var pub, fixed string
+	for _, ifaces := range addrs {
+		for _, ip := range ifaces {
+			ver, _ := ip["version"].(float64)
+			if ver != 4 && ver != 0 {
+				continue
+			}
+			addr, _ := ip["addr"].(string)
+			if addr == "" {
+				continue
+			}
+			t, _ := ip["OS-EXT-IPS:type"].(string)
+			if t == "floating" && pub == "" {
+				pub = addr
+			}
+			if t != "floating" && fixed == "" {
+				fixed = addr
+			}
+		}
+	}
+	return pub, fixed
 }
 
 func (r *InstanceResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
@@ -233,13 +307,7 @@ func (r *InstanceResource) Read(ctx context.Context, req resource.ReadRequest, r
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	var got struct {
-		ID        string `json:"id"`
-		Name      string `json:"name"`
-		Status    string `json:"status"`
-		IPAddress string `json:"ip_address"`
-		PublicIP  string `json:"public_ip"`
-	}
+	var got serverGetResponse
 	err := r.client.Do("GET", "/api/compute/servers/"+state.ID.ValueString(), nil, &got)
 	if err != nil {
 		if apiErr, ok := err.(*APIError); ok && apiErr.Status == 404 {
@@ -251,9 +319,10 @@ func (r *InstanceResource) Read(ctx context.Context, req resource.ReadRequest, r
 	}
 	state.Name = types.StringValue(got.Name)
 	state.Status = types.StringValue(got.Status)
-	ip := got.PublicIP
+	pub, fixed := extractIPs(got.Addresses)
+	ip := pub
 	if ip == "" {
-		ip = got.IPAddress
+		ip = fixed
 	}
 	state.IPAddress = types.StringValue(ip)
 	resp.Diagnostics.Append(resp.State.Set(ctx, state)...)
