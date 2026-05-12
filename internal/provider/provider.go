@@ -113,6 +113,19 @@ func (p *SwsProvider) Resources(_ context.Context) []func() resource.Resource {
 		NewVolumeResource,
 		NewVolumeAttachmentResource,
 		NewVolumeSnapshotResource,
+		// v0.3 — Tier 2: managed services
+		NewLoadBalancerResource,
+		NewLBListenerResource,
+		NewLBPoolResource,
+		NewLBMemberResource,
+		NewLBHealthMonitorResource,
+		NewDNSZoneResource,
+		NewDNSRecordResource,
+		NewPrivateDNSZoneResource,
+		NewObjectBucketResource,
+		NewKubernetesTemplateResource,
+		NewKubernetesClusterResource,
+		NewManagedDatabaseResource,
 	}
 }
 
