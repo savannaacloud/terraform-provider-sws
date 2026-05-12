@@ -104,6 +104,15 @@ func (p *SwsProvider) Resources(_ context.Context) []func() resource.Resource {
 		NewKeypairResource,
 		NewNetworkResource,
 		NewSecurityGroupResource,
+		// v0.2 — Tier 1
+		NewSubnetResource,
+		NewRouterResource,
+		NewRouterInterfaceResource,
+		NewFloatingIPResource,
+		NewSecurityGroupRuleResource,
+		NewVolumeResource,
+		NewVolumeAttachmentResource,
+		NewVolumeSnapshotResource,
 	}
 }
 
@@ -111,6 +120,9 @@ func (p *SwsProvider) DataSources(_ context.Context) []func() datasource.DataSou
 	return []func() datasource.DataSource{
 		NewImageDataSource,
 		NewPlanDataSource,
+		// v0.2 — lookups by name
+		NewNetworkDataSource,
+		NewSecurityGroupDataSource,
 	}
 }
 
