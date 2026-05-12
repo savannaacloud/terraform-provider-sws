@@ -126,6 +126,23 @@ func (p *SwsProvider) Resources(_ context.Context) []func() resource.Resource {
 		NewKubernetesTemplateResource,
 		NewKubernetesClusterResource,
 		NewManagedDatabaseResource,
+		// v0.4 — Tier 3: long-tail services
+		NewServerlessContainerResource,
+		NewFileStorageResource,
+		NewCacheResource,
+		NewQueueResource,
+		NewKafkaResource,
+		NewLoggingResource,
+		NewCDNResource,
+		NewNotificationResource,
+		NewPipelineResource,
+		NewRegistryResource,
+		NewBackupPolicyResource,
+		NewBastionResource,
+		NewVPCPeeringResource,
+		NewVaultSecretResource,
+		NewAlarmResource,
+		NewTagResource,
 	}
 }
 
