@@ -91,18 +91,32 @@ func (r *KeypairResource) Read(ctx context.Context, req resource.ReadRequest, re
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	var got struct {
+	// Backend has no GET /keypairs/{name} (only POST + LIST + DELETE).
+	// LIST + filter by suffix; the backend prefixes stored keypair names
+	// with a per-project tag, so the stored name ends with the user-given
+	// name. Match suffix-with-dash, plus bare-name for legacy rows.
+	var all []struct {
 		Name        string `json:"name"`
-		PublicKey   string `json:"public_key"`
 		Fingerprint string `json:"fingerprint"`
 	}
-	err := r.client.Do("GET", "/api/compute/keypairs/"+state.Name.ValueString(), nil, &got)
-	if err != nil {
-		if apiErr, ok := err.(*APIError); ok && apiErr.Status == 404 {
-			resp.State.RemoveResource(ctx)
-			return
-		}
+	if err := r.client.Do("GET", "/api/compute/keypairs", nil, &all); err != nil {
 		resp.Diagnostics.AddError("read keypair", err.Error())
+		return
+	}
+	want := state.Name.ValueString()
+	var got *struct {
+		Name        string `json:"name"`
+		Fingerprint string `json:"fingerprint"`
+	}
+	for i := range all {
+		n := all[i].Name
+		if n == want || (len(n) > len(want) && n[len(n)-len(want)-1:] == "-"+want) {
+			got = &all[i]
+			break
+		}
+	}
+	if got == nil {
+		resp.State.RemoveResource(ctx)
 		return
 	}
 	state.Fingerprint = types.StringValue(got.Fingerprint)

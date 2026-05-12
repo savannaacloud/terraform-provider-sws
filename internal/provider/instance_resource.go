@@ -40,6 +40,29 @@ type InstanceModel struct {
 	Status     types.String `tfsdk:"status"`
 }
 
+
+// isUUID returns true if s looks like an OpenStack/Glance UUID
+// (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx).
+func isUUID(s string) bool {
+	if len(s) != 36 {
+		return false
+	}
+	for i, c := range s {
+		switch i {
+		case 8, 13, 18, 23:
+			if c != '-' {
+				return false
+			}
+		default:
+			isHex := (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
+			if !isHex {
+				return false
+			}
+		}
+	}
+	return true
+}
+
 func NewInstanceResource() resource.Resource { return &InstanceResource{} }
 
 func (r *InstanceResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -122,11 +145,38 @@ func (r *InstanceResource) Create(ctx context.Context, req resource.CreateReques
 		return
 	}
 
+	// Backend expects flavor_id + image_id (UUIDs) per the launch payload
+	// the web console sends. The HCL accepts either a UUID or a plan name;
+	// resolve the name → UUID on the fly so users can keep using the
+	// idiomatic data.sws_plan.NAME.name reference.
+	flavorID := plan.Plan.ValueString()
+	if !isUUID(flavorID) {
+		var all []struct {
+			ID   string `json:"id"`
+			Name string `json:"name"`
+		}
+		if err := r.client.Do("GET", "/api/compute/plans", nil, &all); err != nil {
+			resp.Diagnostics.AddError("resolve plan", err.Error())
+			return
+		}
+		found := ""
+		for _, pl := range all {
+			if pl.Name == flavorID {
+				found = pl.ID
+				break
+			}
+		}
+		if found == "" {
+			resp.Diagnostics.AddError("resolve plan", fmt.Sprintf("no plan with name %q", flavorID))
+			return
+		}
+		flavorID = found
+	}
+
 	body := map[string]any{
-		"name":           plan.Name.ValueString(),
-		"plan":           plan.Plan.ValueString(),
-		"image":          plan.Image.ValueString(),
-		"auto_public_ip": !plan.PublicIP.IsNull() && plan.PublicIP.ValueBool() || plan.PublicIP.IsNull(),
+		"name":      plan.Name.ValueString(),
+		"flavor_id": flavorID,
+		"image_id":  plan.Image.ValueString(),
 	}
 	if !plan.NetworkID.IsNull() && plan.NetworkID.ValueString() != "" {
 		body["networks"] = []map[string]string{{"uuid": plan.NetworkID.ValueString()}}
