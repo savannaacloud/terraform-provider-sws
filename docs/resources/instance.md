@@ -1,50 +1,52 @@
 ---
 page_title: "sws_instance Resource - terraform-provider-sws"
 description: |-
-  Manages a Savannaa compute instance.
+  A compute instance (VM).
 ---
 
 # sws_instance
 
-A Savannaa compute instance (virtual machine).
+A compute instance (VM).
 
 ## Example
 
 ```hcl
-data "sws_image" "ubuntu" { name = "Ubuntu 22.04" }
-data "sws_plan"  "small"  { name = "m1.small" }
-
 resource "sws_instance" "web" {
-  name      = "web-01"
-  plan      = data.sws_plan.small.name
-  image     = data.sws_image.ubuntu.id
-  keypair   = sws_keypair.admin.name
-  public_ip = true
+  name       = "web-01"
+  plan       = data.sws_plan.small.name
+  image      = data.sws_image.ubuntu.id
+  network_id = sws_network.app.id
+  keypair    = sws_keypair.admin.name
+  public_ip  = true
 }
 ```
 
-## Schema
+## Argument Reference
 
 ### Required
 
-- `name` — display name
-- `plan` — plan/flavor name (use `sws_plan` data source)
-- `image` — image UUID (use `sws_image` data source)
+- `name` (string) — Display name.
+- `plan` (string) — Flavor name (e.g. `m1.small`) or UUID. The provider resolves names to UUIDs automatically.
+- `image` (string) — Image UUID. Use `data.sws_image.<name>.id`.
 
 ### Optional
 
-- `network_id` — network UUID, defaults to the project's default network
-- `keypair` — `sws_keypair` name to inject for SSH
-- `public_ip` — allocate a public IP at create. Default `true`
+- `network_id` (string) — Network UUID. Defaults to the project's default network.
+- `keypair` (string) — Keypair name to inject for SSH access.
+- `public_ip` (bool) — Allocate + associate a public IP after ACTIVE. Default `false`.
 
-### Read-only
 
-- `id` — server UUID
-- `ip_address` — public IP if allocated, else primary fixed IP
-- `status` — `BUILD` / `ACTIVE` / `ERROR` / etc.
+## Attribute Reference
+
+In addition to the arguments above, the following attributes are exported:
+
+- `id` (string) — Instance UUID.
+- `ip_address` (string) — Public IP if allocated, else fixed IP.
+- `status` (string) — BUILD / ACTIVE / ERROR / etc.
+
 
 ## Import
 
 ```
-terraform import sws_instance.web <uuid>
+terraform import sws_instance.<local_name> <id>
 ```
