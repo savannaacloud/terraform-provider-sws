@@ -56,7 +56,7 @@ func (d *ImageDataSource) Read(ctx context.Context, req datasource.ReadRequest, 
 		ID   string `json:"id"`
 		Name string `json:"name"`
 	}
-	if err := d.client.Do("GET", "/api/compute/images", nil, &all); err != nil {
+	if err := d.client.Do("GET", "/api/images", nil, &all); err != nil {
 		resp.Diagnostics.AddError("list images", err.Error())
 		return
 	}
