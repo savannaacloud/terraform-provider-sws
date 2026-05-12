@@ -34,8 +34,15 @@ func (e *APIError) Error() string {
 }
 
 func NewClient(baseURL, apiKey, project, region string) *Client {
+	// Defensive: customers who set SWS_API_URL=http://savannaa.com hit
+	// connect-refused on port 80 (prod only exposes 443). Force https
+	// for any savannaa.com / *.savannaa.com base URL.
+	baseURL = strings.TrimRight(baseURL, "/")
+	if strings.HasPrefix(baseURL, "http://") && strings.Contains(baseURL, "savannaa.com") {
+		baseURL = "https://" + strings.TrimPrefix(baseURL, "http://")
+	}
 	return &Client{
-		BaseURL: strings.TrimRight(baseURL, "/"),
+		BaseURL: baseURL,
 		APIKey:  apiKey,
 		Project: project,
 		Region:  region,

@@ -104,6 +104,10 @@ func (r *KubernetesTemplateResource) Read(ctx context.Context, req resource.Read
 	var got struct {
 		ID string `json:"id"`
 	}
+	if state.ID.ValueString() == "" {
+		resp.State.RemoveResource(ctx)
+		return
+	}
 	err := r.client.Do("GET", "/api/orchestration/cluster-templates/"+state.ID.ValueString(), nil, &got)
 	if err != nil {
 		if apiErr, ok := err.(*APIError); ok && apiErr.Status == 404 {

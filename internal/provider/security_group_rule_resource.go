@@ -118,6 +118,10 @@ func (r *SecurityGroupRuleResource) Read(ctx context.Context, req resource.ReadR
 	var got struct {
 		ID string `json:"id"`
 	}
+	if state.ID.ValueString() == "" {
+		resp.State.RemoveResource(ctx)
+		return
+	}
 	err := r.client.Do("GET", "/api/network/security-group-rules/"+state.ID.ValueString(), nil, &got)
 	if err != nil {
 		if apiErr, ok := err.(*APIError); ok && apiErr.Status == 404 {

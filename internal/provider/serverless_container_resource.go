@@ -87,6 +87,10 @@ func (r *ServerlessContainerResource) Read(ctx context.Context, req resource.Rea
 		Status  string `json:"status"`
 		Address string `json:"address"`
 	}
+	if state.ID.ValueString() == "" {
+		resp.State.RemoveResource(ctx)
+		return
+	}
 	err := r.client.Do("GET", "/api/serverless/containers/"+state.ID.ValueString(), nil, &got)
 	if err != nil {
 		if apiErr, ok := err.(*APIError); ok && apiErr.Status == 404 {

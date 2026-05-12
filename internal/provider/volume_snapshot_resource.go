@@ -96,6 +96,10 @@ func (r *VolumeSnapshotResource) Read(ctx context.Context, req resource.ReadRequ
 		Status      string `json:"status"`
 		Description string `json:"description"`
 	}
+	if state.ID.ValueString() == "" {
+		resp.State.RemoveResource(ctx)
+		return
+	}
 	err := r.client.Do("GET", "/api/storage/snapshots/"+state.ID.ValueString(), nil, &got)
 	if err != nil {
 		if apiErr, ok := err.(*APIError); ok && apiErr.Status == 404 {

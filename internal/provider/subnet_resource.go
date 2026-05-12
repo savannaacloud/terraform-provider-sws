@@ -123,6 +123,10 @@ func (r *SubnetResource) Read(ctx context.Context, req resource.ReadRequest, res
 		EnableDHCP bool     `json:"is_dhcp_enabled"`
 		DNS        []string `json:"dns_nameservers"`
 	}
+	if state.ID.ValueString() == "" {
+		resp.State.RemoveResource(ctx)
+		return
+	}
 	err := r.client.Do("GET", "/api/network/subnets/"+state.ID.ValueString(), nil, &got)
 	if err != nil {
 		if apiErr, ok := err.(*APIError); ok && apiErr.Status == 404 {

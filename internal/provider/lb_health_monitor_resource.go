@@ -100,6 +100,10 @@ func (r *LBHealthMonitorResource) Read(ctx context.Context, req resource.ReadReq
 		MaxRetries int64  `json:"max_retries"`
 		URLPath    string `json:"url_path"`
 	}
+	if state.ID.ValueString() == "" {
+		resp.State.RemoveResource(ctx)
+		return
+	}
 	err := r.client.Do("GET", "/api/orchestration/health-monitors/"+state.ID.ValueString(), nil, &got)
 	if err != nil {
 		if apiErr, ok := err.(*APIError); ok && apiErr.Status == 404 {

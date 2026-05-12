@@ -66,6 +66,10 @@ func (r *ObjectBucketResource) Read(ctx context.Context, req resource.ReadReques
 		return
 	}
 	var got struct{}
+	if state.ID.ValueString() == "" {
+		resp.State.RemoveResource(ctx)
+		return
+	}
 	err := r.client.Do("GET", "/api/storage/containers/"+state.ID.ValueString(), nil, &got)
 	if err != nil {
 		if apiErr, ok := err.(*APIError); ok && apiErr.Status == 404 {

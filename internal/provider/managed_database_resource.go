@@ -129,6 +129,10 @@ func (r *ManagedDatabaseResource) Read(ctx context.Context, req resource.ReadReq
 		IP      string `json:"ip"`
 		Size    int64  `json:"size"`
 	}
+	if state.ID.ValueString() == "" {
+		resp.State.RemoveResource(ctx)
+		return
+	}
 	err := r.client.Do("GET", "/api/database/instances/"+state.ID.ValueString(), nil, &got)
 	if err != nil {
 		if apiErr, ok := err.(*APIError); ok && apiErr.Status == 404 {

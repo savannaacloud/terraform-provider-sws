@@ -121,6 +121,10 @@ func (r *RouterResource) Read(ctx context.Context, req resource.ReadRequest, res
 		Description         string         `json:"description"`
 		ExternalGatewayInfo map[string]any `json:"external_gateway_info"`
 	}
+	if state.ID.ValueString() == "" {
+		resp.State.RemoveResource(ctx)
+		return
+	}
 	err := r.client.Do("GET", "/api/network/routers/"+state.ID.ValueString(), nil, &got)
 	if err != nil {
 		if apiErr, ok := err.(*APIError); ok && apiErr.Status == 404 {
