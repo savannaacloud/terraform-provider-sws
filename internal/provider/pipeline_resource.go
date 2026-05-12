@@ -74,6 +74,10 @@ func (r *PipelineResource) Read(ctx context.Context, req resource.ReadRequest, r
 		Status string `json:"status"`
 		Config string `json:"config"`
 	}
+	if state.ID.ValueString() == "" {
+		resp.State.RemoveResource(ctx)
+		return
+	}
 	err := r.client.Do("GET", "/api/services/pipeline/"+state.ID.ValueString(), nil, &got)
 	if err != nil {
 		if apiErr, ok := err.(*APIError); ok && apiErr.Status == 404 {

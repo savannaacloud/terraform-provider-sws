@@ -74,6 +74,10 @@ func (r *FileStorageResource) Read(ctx context.Context, req resource.ReadRequest
 		Status string `json:"status"`
 		Config string `json:"config"`
 	}
+	if state.ID.ValueString() == "" {
+		resp.State.RemoveResource(ctx)
+		return
+	}
 	err := r.client.Do("GET", "/api/services/filestorage/"+state.ID.ValueString(), nil, &got)
 	if err != nil {
 		if apiErr, ok := err.(*APIError); ok && apiErr.Status == 404 {

@@ -89,6 +89,10 @@ func (r *LBPoolResource) Read(ctx context.Context, req resource.ReadRequest, res
 		Name        string `json:"name"`
 		LBAlgorithm string `json:"lb_algorithm"`
 	}
+	if state.ID.ValueString() == "" {
+		resp.State.RemoveResource(ctx)
+		return
+	}
 	err := r.client.Do("GET", "/api/orchestration/pools/"+state.ID.ValueString(), nil, &got)
 	if err != nil {
 		if apiErr, ok := err.(*APIError); ok && apiErr.Status == 404 {

@@ -74,6 +74,10 @@ func (r *VaultSecretResource) Read(ctx context.Context, req resource.ReadRequest
 		Status string `json:"status"`
 		Config string `json:"config"`
 	}
+	if state.ID.ValueString() == "" {
+		resp.State.RemoveResource(ctx)
+		return
+	}
 	err := r.client.Do("GET", "/api/vault/secrets/"+state.ID.ValueString(), nil, &got)
 	if err != nil {
 		if apiErr, ok := err.(*APIError); ok && apiErr.Status == 404 {

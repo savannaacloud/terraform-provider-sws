@@ -143,6 +143,10 @@ func (r *NetworkResource) Read(ctx context.Context, req resource.ReadRequest, re
 		Name        string `json:"name"`
 		Description string `json:"description"`
 	}
+	if state.ID.ValueString() == "" {
+		resp.State.RemoveResource(ctx)
+		return
+	}
 	err := r.client.Do("GET", "/api/network/networks/"+state.ID.ValueString(), nil, &got)
 	if err != nil {
 		if apiErr, ok := err.(*APIError); ok && apiErr.Status == 404 {

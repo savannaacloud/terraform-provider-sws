@@ -91,6 +91,10 @@ func (r *LBListenerResource) Read(ctx context.Context, req resource.ReadRequest,
 		ProtocolPort  int64  `json:"protocol_port"`
 		DefaultPoolID string `json:"default_pool_id"`
 	}
+	if state.ID.ValueString() == "" {
+		resp.State.RemoveResource(ctx)
+		return
+	}
 	err := r.client.Do("GET", "/api/orchestration/listeners/"+state.ID.ValueString(), nil, &got)
 	if err != nil {
 		if apiErr, ok := err.(*APIError); ok && apiErr.Status == 404 {

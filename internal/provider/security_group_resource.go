@@ -88,6 +88,10 @@ func (r *SecurityGroupResource) Read(ctx context.Context, req resource.ReadReque
 		Name        string `json:"name"`
 		Description string `json:"description"`
 	}
+	if state.ID.ValueString() == "" {
+		resp.State.RemoveResource(ctx)
+		return
+	}
 	err := r.client.Do("GET", "/api/network/security-groups/"+state.ID.ValueString(), nil, &got)
 	if err != nil {
 		if apiErr, ok := err.(*APIError); ok && apiErr.Status == 404 {
