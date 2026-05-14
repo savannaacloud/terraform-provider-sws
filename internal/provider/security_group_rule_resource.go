@@ -105,7 +105,14 @@ func (r *SecurityGroupRuleResource) Create(ctx context.Context, req resource.Cre
 	if got.Protocol != "" {
 		plan.Protocol = types.StringValue(got.Protocol)
 	}
-	plan.EtherType = types.StringValue(got.EtherType)
+	// Keep plan value when backend response omits ethertype (some backend
+	// paths — e.g. the duplicate-rule recovery path — return safe_dict'd
+	// neutron objects where the field can come back None).
+	if got.EtherType != "" {
+		plan.EtherType = types.StringValue(got.EtherType)
+	} else if plan.EtherType.IsNull() || plan.EtherType.IsUnknown() {
+		plan.EtherType = types.StringValue(et)
+	}
 	plan.Description = types.StringValue(got.Description)
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
 }

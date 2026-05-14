@@ -46,7 +46,7 @@ func NewClient(baseURL, apiKey, project, region string) *Client {
 		APIKey:  apiKey,
 		Project: project,
 		Region:  region,
-		HTTP:    &http.Client{Timeout: 60 * time.Second},
+		HTTP:    &http.Client{Timeout: 600 * time.Second},
 	}
 }
 

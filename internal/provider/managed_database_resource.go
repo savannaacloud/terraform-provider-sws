@@ -107,9 +107,15 @@ func (r *ManagedDatabaseResource) Create(ctx context.Context, req resource.Creat
 	plan.ID = types.StringValue(got.ID)
 	plan.Status = types.StringValue(status)
 	plan.Address = types.StringValue(addr)
-	if !plan.RootEnabled.IsNull() && plan.RootEnabled.ValueBool() && status == "ACTIVE" {
+	rootEnabled := false
+	if !plan.RootEnabled.IsNull() && !plan.RootEnabled.IsUnknown() {
+		rootEnabled = plan.RootEnabled.ValueBool()
+	}
+	if rootEnabled && status == "ACTIVE" {
 		_ = r.client.Do("POST", "/api/database/instances/"+got.ID+"/root", nil, nil)
 	}
+	// Computed attribute must have a known value after apply.
+	plan.RootEnabled = types.BoolValue(rootEnabled)
 	if status == "ERROR" {
 		resp.Diagnostics.AddError("managed db create failed", "instance entered ERROR state")
 		return
