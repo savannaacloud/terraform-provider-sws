@@ -62,7 +62,12 @@ func (r *VPCPeeringResource) Create(ctx context.Context, req resource.CreateRequ
 	}
 	plan.ID = types.StringValue(got.ID)
 	plan.Status = types.StringValue(got.Status)
-	plan.Config = types.StringValue(got.Config)
+	// Keep plan.Config when backend response omits it (envelope resources
+	// store domain-specific fields inside `config` and the backend may not
+	// echo them back).
+	if got.Config != "" {
+		plan.Config = types.StringValue(got.Config)
+	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
 }
 func (r *VPCPeeringResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
